@@ -64,11 +64,14 @@ func (fact RegisterPrescriptionFact) IsValid(b []byte) error {
 			),
 		)
 	}
-	if len(fact.Hospital()) > types.MaxDataLen {
+	if !currencytypes.ReValidSpcecialCh.Match([]byte(fact.PrescriptionHash())) {
+		return common.ErrValueInvalid.Wrap(errors.Errorf("prescription hash %s, must match regex `^[^\\s:/?#\\[\\]$@]*$`", fact.PrescriptionHash()))
+	}
+	if len(fact.Hospital()) < 1 || len(fact.Hospital()) > types.MaxDataLen {
 		return common.ErrFactInvalid.Wrap(
 			common.ErrValOOR.Wrap(
 				errors.Errorf(
-					"invalid hospital name length, %v exeeds the maximum allowed length of %v", len(fact.Hospital()),
+					"invalid hospital name length, %v is outside the allowed range (1 to %v)", len(fact.Hospital()),
 					types.MaxDataLen,
 				),
 			),

@@ -1,6 +1,8 @@
 package types
 
 import (
+	"github.com/ProtoconNet/mitum-currency/v3/common"
+	currencytypes "github.com/ProtoconNet/mitum-currency/v3/types"
 	"github.com/ProtoconNet/mitum2/util"
 	"github.com/ProtoconNet/mitum2/util/hint"
 	"github.com/pkg/errors"
@@ -46,9 +48,12 @@ func (p PrescriptionInfo) IsValid([]byte) error {
 	if len(p.prescriptionHash) < 1 || len(p.prescriptionHash) > MaxPrescriptionHashLen {
 		return errors.Errorf("invalid prescription hash length, %v is outside the allowed range (1 to %v)", len(p.prescriptionHash), MaxPrescriptionHashLen)
 	}
-	if len(p.hospital) > MaxDataLen {
+	if !currencytypes.ReValidSpcecialCh.Match([]byte(p.prescriptionHash)) {
+		return common.ErrValueInvalid.Wrap(errors.Errorf("prescription hash %s, must match regex `^[^\\s:/?#\\[\\]$@]*$`", p.prescriptionHash))
+	}
+	if len(p.hospital) < 1 || len(p.hospital) > MaxDataLen {
 		return errors.Errorf(
-			"invalid hospital name length, %v exeeds the maximum allowed length of %v", len(p.prescriptionHash),
+			"invalid hospital name length, %v is outside the allowed range (1 to %v)", len(p.prescriptionHash),
 			MaxDataLen,
 		)
 	}
