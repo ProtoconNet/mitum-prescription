@@ -148,7 +148,14 @@ func (opp *UsePrescriptionProcessor) PreProcess(
 		return ctx, mitumbase.NewBaseOperationProcessReasonError(
 			common.ErrMPreProcess.Wrap(common.ErrMStateValInvalid).
 				Wrap(common.ErrMValueInvalid).
-				Errorf("Prescription does not registered or already used")), nil
+				Errorf("Prescription does not registered")), nil
+	}
+
+	if pInfo.Status() == types.Used {
+		return ctx, mitumbase.NewBaseOperationProcessReasonError(
+			common.ErrMPreProcess.Wrap(common.ErrMStateValInvalid).
+				Wrap(common.ErrMValueInvalid).
+				Errorf("Prescription has already been used")), nil
 	}
 
 	return ctx, nil, nil
