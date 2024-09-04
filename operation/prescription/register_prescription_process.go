@@ -119,7 +119,7 @@ func (opp *RegisterPrescriptionProcessor) PreProcess(
 	if err := state.CheckExistsState(statepsr.DesignStateKey(fact.Contract()), getStateFunc); err != nil {
 		return nil, mitumbase.NewBaseOperationProcessReasonError(
 			common.ErrMPreProcess.
-				Wrap(common.ErrMServiceNF).Errorf("prescription service in contract account %v",
+				Wrap(common.ErrMServiceNF).Errorf("prescription service for contract account %v has not been registered",
 				fact.Contract(),
 			)), nil
 	}
@@ -128,7 +128,7 @@ func (opp *RegisterPrescriptionProcessor) PreProcess(
 		statepsr.PrescriptionInfoStateKey(fact.Contract(), fact.PrescriptionHash()), getStateFunc); found {
 		return nil, mitumbase.NewBaseOperationProcessReasonError(
 			common.ErrMPreProcess.
-				Wrap(common.ErrMStateE).Errorf("prescription info for hash %q in contract account %v",
+				Wrap(common.ErrMStateE).Errorf("prescription with hash %v has already been registered in contract account %v",
 				fact.PrescriptionHash(), fact.Contract(),
 			)), nil
 	}
@@ -144,7 +144,7 @@ func (opp *RegisterPrescriptionProcessor) Process( // nolint:dupl
 
 	fact, ok := op.Fact().(RegisterPrescriptionFact)
 	if !ok {
-		return nil, nil, e.Errorf("expected RegisterPrescriptionFact, not %T", op.Fact())
+		return nil, nil, e.Errorf("expected %T, not %T", RegisterPrescriptionFact{}, op.Fact())
 	}
 
 	stData := types.NewPrescriptionInfo(
@@ -157,7 +157,7 @@ func (opp *RegisterPrescriptionProcessor) Process( // nolint:dupl
 		"",
 	)
 	if err := stData.IsValid(nil); err != nil {
-		return nil, mitumbase.NewBaseOperationProcessReasonError("invalid prescription info; %w", err), nil
+		return nil, mitumbase.NewBaseOperationProcessReasonError("invalid prescription; %w", err), nil
 	}
 
 	var sts []mitumbase.StateMergeValue // nolint:prealloc
@@ -166,10 +166,7 @@ func (opp *RegisterPrescriptionProcessor) Process( // nolint:dupl
 		statepsr.NewPrescriptionInfoStateValue(stData),
 	))
 
-	currencyPolicy, err := state.ExistsCurrencyPolicy(fact.Currency(), getStateFunc)
-	if err != nil {
-		return nil, mitumbase.NewBaseOperationProcessReasonError("currency not found, %q; %w", fact.Currency(), err), nil
-	}
+	currencyPolicy, _ := state.ExistsCurrencyPolicy(fact.Currency(), getStateFunc)
 
 	if currencyPolicy.Feeer().Receiver() == nil {
 		return sts, nil, nil

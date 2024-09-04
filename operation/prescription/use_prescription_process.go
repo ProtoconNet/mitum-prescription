@@ -2,7 +2,6 @@ package prescription
 
 import (
 	"context"
-	"fmt"
 	"github.com/ProtoconNet/mitum-currency/v3/common"
 	"github.com/ProtoconNet/mitum-currency/v3/state"
 	crtypes "github.com/ProtoconNet/mitum-currency/v3/types"
@@ -123,7 +122,7 @@ func (opp *UsePrescriptionProcessor) PreProcess(
 	if err := state.CheckExistsState(prstate.DesignStateKey(fact.Contract()), getStateFunc); err != nil {
 		return nil, mitumbase.NewBaseOperationProcessReasonError(
 			common.ErrMPreProcess.
-				Wrap(common.ErrMServiceNF).Errorf("prescription service for contract account %v",
+				Wrap(common.ErrMServiceNF).Errorf("prescription service for contract account %v has not been registered",
 				fact.Contract(),
 			)), nil
 	}
@@ -133,7 +132,7 @@ func (opp *UsePrescriptionProcessor) PreProcess(
 		return ctx, mitumbase.NewBaseOperationProcessReasonError(
 			common.ErrMPreProcess.
 				Wrap(common.ErrMStateNF).
-				Errorf("prescription info state in contract account %v", fact.Contract())), nil
+				Errorf("prescription with hash %v has not been registered in contract account %v", fact.PrescriptionHash(), fact.Contract())), nil
 	}
 
 	pInfo, err := prstate.GetPrescriptionInfoFromState(st)
@@ -141,21 +140,21 @@ func (opp *UsePrescriptionProcessor) PreProcess(
 		return ctx, mitumbase.NewBaseOperationProcessReasonError(
 			common.ErrMPreProcess.Wrap(common.ErrMStateValInvalid).
 				Wrap(common.ErrMValueInvalid).
-				Errorf("prescription info value in contract account %v", fact.Contract())), nil
-	}
-
-	if pInfo.Status() != types.Registered {
-		return ctx, mitumbase.NewBaseOperationProcessReasonError(
-			common.ErrMPreProcess.Wrap(common.ErrMStateValInvalid).
-				Wrap(common.ErrMValueInvalid).
-				Errorf("Prescription does not registered")), nil
+				Errorf("prescription with hash %v has not been registered in contract account %v", fact.PrescriptionHash(), fact.Contract())), nil
 	}
 
 	if pInfo.Status() == types.Used {
 		return ctx, mitumbase.NewBaseOperationProcessReasonError(
 			common.ErrMPreProcess.Wrap(common.ErrMStateValInvalid).
 				Wrap(common.ErrMValueInvalid).
-				Errorf("Prescription has already been used")), nil
+				Errorf("prescription with hash %v has already been used", fact.PrescriptionHash())), nil
+	}
+
+	if pInfo.Status() != types.Registered {
+		return ctx, mitumbase.NewBaseOperationProcessReasonError(
+			common.ErrMPreProcess.Wrap(common.ErrMStateValInvalid).
+				Wrap(common.ErrMValueInvalid).
+				Errorf("prescription with hash %v has not been registered", fact.PrescriptionHash())), nil
 	}
 
 	return ctx, nil, nil
@@ -175,14 +174,14 @@ func (opp *UsePrescriptionProcessor) Process( // nolint:dupl
 	nowTime := uint64(proposal.ProposalFact().ProposedAt().Unix())
 
 	if nowTime < pInfo.PrescribeDate() {
-		return nil, mitumbase.NewBaseOperationProcessReasonError("Prescribe date cannot be in the future %v < %v", nowTime, pInfo.PrescribeDate()), nil
+		return nil, mitumbase.NewBaseOperationProcessReasonError("prescribe date(%v) cannot be in the future. now is %v", pInfo.PrescribeDate(), nowTime), nil
 	}
 
 	if nowTime > pInfo.EndDate() {
-		return nil, mitumbase.NewBaseOperationProcessReasonError("Prescription expired"), nil
+		return nil, mitumbase.NewBaseOperationProcessReasonError("prescription expired, end date(%v) has already passed. now is %v", pInfo.EndDate(), nowTime), nil
 	}
 
-	stData := types.NewPrescriptionInfo(
+	prInfo := types.NewPrescriptionInfo(
 		fact.PrescriptionHash(),
 		pInfo.PrescribeDate(),
 		fact.PrepareDate(),
@@ -192,21 +191,17 @@ func (opp *UsePrescriptionProcessor) Process( // nolint:dupl
 		fact.Pharmacy(),
 	)
 
-	fmt.Println(stData)
-	if err := stData.IsValid(nil); err != nil {
-		return nil, mitumbase.NewBaseOperationProcessReasonError("invalid prescription info; %w", err), nil
+	if err := prInfo.IsValid(nil); err != nil {
+		return nil, mitumbase.NewBaseOperationProcessReasonError("invalid prescription; %w", err), nil
 	}
 
 	var sts []mitumbase.StateMergeValue // nolint:prealloc
 	sts = append(sts, state.NewStateMergeValue(
 		prstate.PrescriptionInfoStateKey(fact.Contract(), fact.PrescriptionHash()),
-		prstate.NewPrescriptionInfoStateValue(stData),
+		prstate.NewPrescriptionInfoStateValue(prInfo),
 	))
 
-	currencyPolicy, err := state.ExistsCurrencyPolicy(fact.Currency(), getStateFunc)
-	if err != nil {
-		return nil, mitumbase.NewBaseOperationProcessReasonError("currency not found, %q; %w", fact.Currency(), err), nil
-	}
+	currencyPolicy, _ := state.ExistsCurrencyPolicy(fact.Currency(), getStateFunc)
 
 	if currencyPolicy.Feeer().Receiver() == nil {
 		return sts, nil, nil
