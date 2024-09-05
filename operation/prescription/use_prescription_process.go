@@ -280,6 +280,7 @@ func (opp *UsePrescriptionProcessor) Process( // nolint:dupl
 }
 
 func (opp *UsePrescriptionProcessor) Close() error {
+	opp.proposal = nil
 	usePrescriptionProcessorPool.Put(opp)
 
 	return nil
