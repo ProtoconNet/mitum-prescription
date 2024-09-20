@@ -147,6 +147,10 @@ func (fact RegisterPrescriptionFact) Currency() currencytypes.CurrencyID {
 	return fact.currency
 }
 
+func (fact RegisterPrescriptionFact) Addresses() ([]mitumbase.Address, error) {
+	return []mitumbase.Address{fact.sender}, nil
+}
+
 type RegisterPrescription struct {
 	common.BaseOperation
 }
