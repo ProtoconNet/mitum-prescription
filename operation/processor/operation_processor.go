@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"fmt"
 	"github.com/ProtoconNet/mitum-currency/v3/operation/currency"
 	"github.com/ProtoconNet/mitum-currency/v3/operation/extension"
 	currencyprocessor "github.com/ProtoconNet/mitum-currency/v3/operation/processor"
@@ -11,9 +12,10 @@ import (
 )
 
 const (
-	DuplicationTypeSender   currencytypes.DuplicationType = "sender"
-	DuplicationTypeCurrency currencytypes.DuplicationType = "currency"
-	DuplicationTypeContract currencytypes.DuplicationType = "contract"
+	DuplicationTypeSender       currencytypes.DuplicationType = "sender"
+	DuplicationTypeCurrency     currencytypes.DuplicationType = "currency"
+	DuplicationTypeContract     currencytypes.DuplicationType = "contract"
+	DuplicationTypePrescription currencytypes.DuplicationType = "prescription"
 )
 
 func CheckDuplication(opr *currencyprocessor.OperationProcessor, op mitumbase.Operation) error {
@@ -23,13 +25,14 @@ func CheckDuplication(opr *currencyprocessor.OperationProcessor, op mitumbase.Op
 	var duplicationTypeSenderID string
 	var duplicationTypeCurrencyID string
 	var duplicationTypeContractID string
+	var duplicationTypePrescription string
 	var newAddresses []mitumbase.Address
 
 	switch t := op.(type) {
 	case currency.CreateAccount:
 		fact, ok := t.Fact().(currency.CreateAccountFact)
 		if !ok {
-			return errors.Errorf("expected CreateAccountFact, not %T", t.Fact())
+			return errors.Errorf("expected %T, not %T", currency.CreateAccountFact{}, t.Fact())
 		}
 		as, err := fact.Targets()
 		if err != nil {
@@ -40,13 +43,13 @@ func CheckDuplication(opr *currencyprocessor.OperationProcessor, op mitumbase.Op
 	case currency.UpdateKey:
 		fact, ok := t.Fact().(currency.UpdateKeyFact)
 		if !ok {
-			return errors.Errorf("expected UpdateKeyFact, not %T", t.Fact())
+			return errors.Errorf("expected %T, not %T", currency.UpdateKeyFact{}, t.Fact())
 		}
 		duplicationTypeSenderID = currencyprocessor.DuplicationKey(fact.Sender().String(), DuplicationTypeSender)
 	case currency.Transfer:
 		fact, ok := t.Fact().(currency.TransferFact)
 		if !ok {
-			return errors.Errorf("expected TransferFact, not %T", t.Fact())
+			return errors.Errorf("expected %T, not %T", currency.TransferFact{}, t.Fact())
 		}
 		duplicationTypeSenderID = currencyprocessor.DuplicationKey(fact.Sender().String(), DuplicationTypeSender)
 	case currency.RegisterCurrency:
@@ -58,14 +61,14 @@ func CheckDuplication(opr *currencyprocessor.OperationProcessor, op mitumbase.Op
 	case currency.UpdateCurrency:
 		fact, ok := t.Fact().(currency.UpdateCurrencyFact)
 		if !ok {
-			return errors.Errorf("expected UpdateCurrencyFact, not %T", t.Fact())
+			return errors.Errorf("expected %T, not %T", currency.UpdateCurrencyFact{}, t.Fact())
 		}
 		duplicationTypeCurrencyID = currencyprocessor.DuplicationKey(fact.Currency().String(), DuplicationTypeCurrency)
 	case currency.Mint:
 	case extension.CreateContractAccount:
 		fact, ok := t.Fact().(extension.CreateContractAccountFact)
 		if !ok {
-			return errors.Errorf("expected CreateContractAccountFact, not %T", t.Fact())
+			return errors.Errorf("expected %T, not %T", extension.CreateContractAccountFact{}, t.Fact())
 		}
 		as, err := fact.Targets()
 		if err != nil {
@@ -83,16 +86,26 @@ func CheckDuplication(opr *currencyprocessor.OperationProcessor, op mitumbase.Op
 	case prescription.RegisterModel:
 		fact, ok := t.Fact().(prescription.RegisterModelFact)
 		if !ok {
-			return errors.Errorf("expected CreateServiceFact, not %T", t.Fact())
+			return errors.Errorf("expected %T, not %T", prescription.RegisterModelFact{}, t.Fact())
 		}
 		duplicationTypeSenderID = currencyprocessor.DuplicationKey(fact.Sender().String(), DuplicationTypeSender)
 		duplicationTypeContractID = currencyprocessor.DuplicationKey(fact.Contract().String(), DuplicationTypeContract)
 	case prescription.RegisterPrescription:
 		fact, ok := t.Fact().(prescription.RegisterPrescriptionFact)
 		if !ok {
-			return errors.Errorf("expected AppendFact, not %T", t.Fact())
+			return errors.Errorf("expected %T, not %T", prescription.RegisterPrescriptionFact{}, t.Fact())
 		}
 		duplicationTypeSenderID = currencyprocessor.DuplicationKey(fact.Sender().String(), DuplicationTypeSender)
+		duplicationTypePrescription = currencyprocessor.DuplicationKey(
+			fmt.Sprintf("%s:%s", fact.Contract().String(), fact.PrescriptionHash()), DuplicationTypePrescription)
+	case prescription.UsePrescription:
+		fact, ok := t.Fact().(prescription.UsePrescriptionFact)
+		if !ok {
+			return errors.Errorf("expected UsePrescriptionFact, not %T", t.Fact())
+		}
+		duplicationTypeSenderID = currencyprocessor.DuplicationKey(fact.Sender().String(), DuplicationTypeSender)
+		duplicationTypePrescription = currencyprocessor.DuplicationKey(
+			fmt.Sprintf("%s:%s", fact.Contract().String(), fact.PrescriptionHash()), DuplicationTypePrescription)
 	default:
 		return nil
 	}
@@ -124,6 +137,16 @@ func CheckDuplication(opr *currencyprocessor.OperationProcessor, op mitumbase.Op
 		}
 
 		opr.Duplicated[duplicationTypeContractID] = struct{}{}
+	}
+	if len(duplicationTypePrescription) > 0 {
+		if _, found := opr.Duplicated[duplicationTypePrescription]; found {
+			return errors.Errorf(
+				"cannot use a duplicated contract-hash for prescription info, %v within a proposal",
+				duplicationTypePrescription,
+			)
+		}
+
+		opr.Duplicated[duplicationTypePrescription] = struct{}{}
 	}
 
 	if len(newAddresses) > 0 {
